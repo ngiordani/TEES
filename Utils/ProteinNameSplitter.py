@@ -447,7 +447,7 @@ def mainFunc(input, output=None, parseName="McCC", tokenizationName=None, newPar
         depSeqId = 0 #1
         for d in parse.getiterator("dependency"):
             t1, t2, dType = d.get("t1"), d.get("t2"), d.get("type")
-            assert t1 in tokenIdMap and t2 in tokenIdMap, "INTERNAL ERROR"
+            assert t1 in tokenIdMap and t2 in tokenIdMap, "INTERNAL ERROR: "+t1+" "+t2+" at "+ sId
 
             dep = ElementTree.SubElement(newparse, "dependency")
             dep.set("t1", tokenIdMap[t1])

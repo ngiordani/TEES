@@ -94,7 +94,8 @@ class Model():
         """
         for c in ["\n", "\t", "\r"]:
             assert c not in name, (c, name, value)
-            assert c not in value, (c, name, value)
+            if value:
+                assert c not in value, (c, name, value)
         values = self._getValues()
         if name != None:
             values[name] = value
