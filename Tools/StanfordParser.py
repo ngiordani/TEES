@@ -45,7 +45,7 @@ def install(destDir=None, downloadDir=None, redownload=False, updateLocalSetting
     items = Download.downloadAndExtract(Settings.URL["STANFORD_PARSER"], destDir, downloadDir)
     stanfordPath = Download.getTopDir(destDir, items)
     Tool.finalizeInstall(["stanford-parser.jar"], 
-                         {"stanford-parser.jar":"java -cp stanford-parser.jar edu.stanford.nlp.trees.EnglishGrammaticalStructure"},
+                         {"stanford-parser.jar":"java -cp stanford-parser.jar:slf4j-api.jar edu.stanford.nlp.trees.EnglishGrammaticalStructure"},
                          stanfordPath, {"STANFORD_PARSER_DIR":stanfordPath}, updateLocalSettings)
 
 
@@ -108,24 +108,40 @@ def addDependencies(outfile, parse, tokenByIndex=None, sentenceId=None, skipExtr
             outfile.readline()
     while line.strip() != "":            
         # Add dependencies
-        depType, rest = line.strip()[:-1].split("(")
-        t1, t2 = rest.split(", ")
-        t1Word, t1Index = t1.rsplit("-", 1)
-        for escSymbol in escSymbols:
-            t1Word = t1Word.replace(escSymbol, escDict[escSymbol])
-        while not t1Index[-1].isdigit(): t1Index = t1Index[:-1] # invalid literal for int() with base 10: "7'"
-        t1Index = int(t1Index)
-        t2Word, t2Index = t2.rsplit("-", 1)
-        for escSymbol in escSymbols:
-            t2Word = t2Word.replace(escSymbol, escDict[escSymbol])
-        while not t2Index[-1].isdigit(): t2Index = t2Index[:-1] # invalid literal for int() with base 10: "7'"
-        t2Index = int(t2Index)
+        if len(line.split('\t')) == 10:
+            # assume CoNLL format
+            fields = line.strip().split('\t')
+            t1Index = int(fields[6])
+            t2Index = int(fields[0])
+            depType = fields[7]
+            t2Word = fields[1]
+            # this is totally cheating :P
+            t1Word = ""
+            if t1Index != 0: t1Word = tokenByIndex[t1Index-1].get("text")
+            for escSymbol in escSymbols:
+                t2Word = t2Word.replace(escSymbol, escDict[escSymbol])
+            rest = ""
+            t1 = ""
+            t2 = ""
+        else:
+            depType, rest = line.strip()[:-1].split("(")
+            t1, t2 = rest.split(", ")
+            t1Word, t1Index = t1.rsplit("-", 1)
+            for escSymbol in escSymbols:
+                t1Word = t1Word.replace(escSymbol, escDict[escSymbol])
+            while not t1Index[-1].isdigit(): t1Index = t1Index[:-1] # invalid literal for int() with base 10: "7'"
+            t1Index = int(t1Index)
+            t2Word, t2Index = t2.rsplit("-", 1)
+            for escSymbol in escSymbols:
+                t2Word = t2Word.replace(escSymbol, escDict[escSymbol])
+            while not t2Index[-1].isdigit(): t2Index = t2Index[:-1] # invalid literal for int() with base 10: "7'"
+            t2Index = int(t2Index)
         # Make element
         #if depType == "root":
         #    assert t1Word == "ROOT"
         #    if tokenByIndex != None and t2Index-1 in tokenByIndex:
         #        tokenByIndex[t2Index-1].set("stanford-root", "True")
-        if depType != "root":
+        if t1Index != 0:
             dep = ET.Element("dependency")
             dep.set("id", "sd_" + str(depCount))
             alignmentError = False
@@ -141,7 +157,7 @@ def addDependencies(outfile, parse, tokenByIndex=None, sentenceId=None, skipExtr
                     while line.strip() != "": line = outfile.readline()
                     break
                 if t1Word != tokenByIndex[t1Index-1].get("text"):
-                    print >> sys.stderr, "Alignment error", (t1Word, tokenByIndex[t1Index-1].get("text"), t1Index-1, depCount, sentenceId, tokens)
+                    print >> sys.stderr, "Alignment error", (t1Word, tokenByIndex[t1Index-1].get("text"), t1Index-1, depCount, sentenceId, tokens, depType, rest, t1, t2)
                     alignmentError = True
                     if parse.get("stanfordAlignmentError") == None:
                         parse.set("stanfordAlignmentError", t1Word)
@@ -216,9 +232,13 @@ def convertXML(parser, input, output=None, debug=False, reparse=False, stanfordP
         # after the "-mx500m" hopefully works.
         stanfordParserArgs = Settings.JAVA.split()[0:1] + ["-mx500m"] + \
                              Settings.JAVA.split()[1:] + \
-                             ["-cp", "stanford-parser.jar", 
+                             [#"-cp", "stanford-parser.jar:slf4j-api.jar", 
                               "edu.stanford.nlp.trees.EnglishGrammaticalStructure", 
-                              "-CCprocessed", "-keepPunct", "-treeFile"]
+                              #"-basic",
+                              #"-CCprocessed", 
+                              #"-enhanced",
+                              "-enhanced++",
+                              "-keepPunct", "-treeFile"]
     print >> sys.stderr, "Running Stanford conversion"
     print >> sys.stderr, "Stanford tools at:", stanfordParserDir
     print >> sys.stderr, "Stanford tools arguments:", " ".join(stanfordParserArgs)
@@ -247,6 +267,7 @@ def convertXML(parser, input, output=None, debug=False, reparse=False, stanfordP
             analyses = setDefaultElement(sentence, "analyses")
             parse = getElementByAttrib(analyses, "parse", {"parser":parser})
         if parse == None:
+            print >> sys.stderr, "Continuing"
             continue
         if len(parse.findall("dependency")) > 0:
             if reparse: # remove existing stanford conversion

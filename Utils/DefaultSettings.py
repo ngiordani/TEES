@@ -44,7 +44,7 @@ URL["GENIA_SENTENCE_SPLITTER"] = "http://www.nactem.ac.uk/y-matsu/geniass/genias
 URL["BANNER_SOURCE"] = "http://banner.svn.sourceforge.net/viewvc/banner/trunk/?view=tar"
 URL["BANNER_COMPILED"] = "http://sourceforge.net/projects/tees/files/data/BANNER-svn-snapshot-120630.tar.gz"
 URL["BLLIP_SOURCE"] = "https://github.com/dmcc/bllip-parser/zipball/master"
-URL["STANFORD_PARSER"] = "http://nlp.stanford.edu/software/stanford-parser-2012-03-09.tgz"
+URL["STANFORD_PARSER"] = "http://nlp.stanford.edu/software/stanford-parser-full-2015-12-09.zip"
 RUBY_PATH = "ruby" # for GENIA Sentence Splitter
 JAVA = "java" # for programs using java
 

@@ -15,7 +15,7 @@ for k, v in escDict.iteritems():
 
 def getTokenText(tokenElement):
     # it's unlikely there would be newlines inside tokens
-    return tokenElement.get("text").replace("\n", " ").replace("\r", " ").strip()
+    return tokenElement.get("text").replace("\n", " ").replace("\r", " ").strip()+'_'+tokenElement.get("POS")
 
 def getTokens(tokenizationElement):
     # order tokens by charOffset
@@ -38,7 +38,7 @@ def getTokens(tokenizationElement):
                 splitFrom = token.get("splitFrom")
                 tokenTexts.append(getTokenText(token))
             else: # this token continues an existing set of split tokens
-                tokenTexts[-1] = tokenTexts[-1] + getTokenText(token)
+                tokenTexts[-1] = tokenTexts[-1].rsplit('_', 1)[0] + getTokenText(token)
         else: # a non-split token
             splitFrom = None
             tokenTexts.append(getTokenText(token))
@@ -47,6 +47,7 @@ def getTokens(tokenizationElement):
     return tokenTexts, tokenIdMap
 
 def exportTokenization(tokenizationElement, parseElement, sentenceElement, outFile):
+
     pennstring = None
     if parseElement != None:
         pennstring = parseElement.get("pennstring")
@@ -84,17 +85,33 @@ def exportStanfordDependencies(parseElement, tokenizationElement, outFile, token
         
     # Process dependencies
     if parseElement != None:
-        for dependency in parseElement.findall("dependency"):
+        expecting = 0
+        deps = sorted(parseElement.findall("dependency"), key=lambda x: int(x.get("t2").split("_")[-1]))
+        for dependency in deps:#parseElement.findall("dependency"):
             if dependency.get("split") != None: # ignore dependencies created by protein name splitter
                 continue
             t1Index = tokenIdMap[int(dependency.get("t1").split("_")[-1]) + tokenIdOffset] # tokenIdOffset can convert to zero-based
             t2Index = tokenIdMap[int(dependency.get("t2").split("_")[-1]) + tokenIdOffset] # tokenIdOffset can convert to zero-based
             assert t1Index < len(tokens), (t1Index, tokens, tokenIdMap, dependency.attrib)
             assert t2Index < len(tokens), (t2Index, tokens, tokenIdMap, dependency.attrib)
-            t1 = tokens[t1Index] + "-" + str(t1Index + 1)
-            t2 = tokens[t2Index] + "-" + str(t2Index + 1)
-            outFile.write(dependency.get("type") + "(" + t1 + ", " + t2 + ")\n")
+            t1, t1pos = tokens[t1Index].rsplit("_", 1) #+ "-" + str(t1Index + 1)
+            t2, t2pos = tokens[t2Index].rsplit("_", 1) #+ "-" + str(t2Index + 1)
+
+            # Catch skipped-over tokens and assume they are attached to the 0th tooken (ROOT). In wrong parses, there may be multiple.
+            while expecting < t2Index:
+                rootWord, rootPos = tokens[expecting].rsplit("_", 1)
+                outFile.write('\t'.join([str(expecting + 1), rootWord, '_', rootPos, rootPos, '_', '0', "root", '_', '_'])+'\n')
+                expecting += 1
+
+            outFile.write('\t'.join([str(t2Index + 1), t2, '_', t2pos, t2pos, '_', str(t1Index + 1), dependency.get("type"), '_', '_'])+'\n')
+            expecting += 1
+            #outFile.write(dependency.get("type") + "(" + t1 + ", " + t2 + ")\n")
+        while expecting < len(tokens):
+            rootWord, rootPos = tokens[expecting].rsplit("_", 1)
+            outFile.write('\t'.join([str(expecting + 1), rootWord, '_', rootPos, rootPos, '_', '0', "root", '_', '_'])+'\n')
+            expecting += 1
     outFile.write("\n") # one more newline to end the sentence (or to mark a sentence with no dependencies)
+
     if parseElement != None:
         return True
     else:
@@ -190,4 +207,4 @@ if __name__=="__main__":
     
     if options.inputSuffixes != None:
         options.inputSuffixes = options.inputSuffixes.split(",")
-    export(options.input, options.output, options.parse, clear=options.clear, inputSuffixes=options.inputSuffixes, tokenIdOffset=options.tokenIdOffset)
+    export(options.input, options.output, options.parse, clear=options.clear, inputSuffixes=options.inputSuffixes, tokenIdOffset=options.tokenIdOffset, toExport=["sd"])
