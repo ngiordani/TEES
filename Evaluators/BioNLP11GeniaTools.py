@@ -98,10 +98,13 @@ def removeDocuments(path, folds, foldToRemove):
 def evaluateVariance(sourceDir, task, folds):
     results = []
     for i in range(folds):
-        results.append( evaluate(sourceDir, task, folds, i) )
+        results.append(evaluate(sourceDir, task, folds=folds, foldToRemove=i))
     print >> sys.stderr, "##### Variance estimation results #####"
-    for r in results:
-        print >> sys.stderr, r["approximate"]["ALL-TOTAL"]
+    fscores = [r[1]["strict"]["ALL-TOTAL"]["fscore"] for r in results]
+    for i, f in enumerate(fscores):
+        print >> sys.stderr, "F-score (strict/ALL-TOTAL) for fold", i, ":", f
+    #print >> sys.stderr, "Mean:", mean(fscores)
+    #print >> sys.stderr, "Variance:", variance(fscores)
 
 def hasGoldDocuments(sourceDir, goldDir):
     goldDocIds = set()
@@ -149,7 +152,7 @@ def getFScore(results, task):
             return -1
     return current
 
-def evaluate(source, task, goldDir=None, debug=False):
+def evaluate(source, task, goldDir=None, debug=False, folds=-1, foldToRemove=-1):
     print >> sys.stderr, "BioNLP task", task, "devel evaluation"
     # Determine task
     subTask = "1"
@@ -157,7 +160,7 @@ def evaluate(source, task, goldDir=None, debug=False):
         task, subTask = task.split(".")
     # Do the evaluation
     if task in ["GE11", "GE09"]:
-        results = evaluateGE(source, task, subTask, goldDir=goldDir, debug=debug)
+        results = evaluateGE(source, task, subTask, goldDir=goldDir, debug=debug, folds=folds, foldToRemove=foldToRemove)
     elif task in ["EPI11", "ID11"]:
         results = evaluateEPIorID(task, source, goldDir)
     elif task == "REN11":
@@ -221,6 +224,7 @@ def checkEvaluator(corpus, sourceDir, goldDir = None):
             print >> sys.stderr, corpus, "BIONLP_EVALUATOR_GOLD_DIR setting not defined"
             return evaluatorDir, None
         goldDir = os.path.join(Settings.BIONLP_EVALUATOR_GOLD_DIR, Settings.EVALUATOR[corpus + "-gold"])
+        print >> sys.stderr, "Found gold data directory", goldDir
     if not os.path.exists(goldDir):
         print >> sys.stderr, corpus, "Evaluator gold data directory", goldDir, "does not exist"
         goldDir = None
@@ -271,7 +275,9 @@ def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, foldT
     os.chdir(evaluatorDir)
     if tempDir == None:
         tempDir = tempfile.mkdtemp()
+
     if folds != -1:
+        silent = True
         folds = getFolds(sourceDir, folds)
         sourceSubsetDir = tempDir + "/source-subset"
         if os.path.exists(sourceSubsetDir):
@@ -639,7 +645,8 @@ if __name__=="__main__":
 #        if options.variance == 0:
 #            evaluate(options.input, options.task, debug = options.debug)
 #        else:
-#            evaluateVariance(options.input, options.task, options.variance)
+    if options.variance > 0 and "GE" in options.task:
+        evaluateVariance(options.input, options.task, options.variance)
 #    elif options.corpus in ["EPI", "ID"]:
 #        print evaluateEPIorID(options.input, options.corpus)
 #    elif options.corpus == "REN":
