@@ -1,0 +1,4 @@
+nummod nomfun
+det nomfun
+case nomfun
+det:predet nomfun

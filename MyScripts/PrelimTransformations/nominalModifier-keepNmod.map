@@ -1,0 +1,5 @@
+acl nommod
+acl:relcl nommod
+appos nommod
+amod nommod
+nmod:poss nommod

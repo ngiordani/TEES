@@ -1,0 +1,6 @@
+advcl predmod
+advmod predmod
+nmod:adv predmod
+nmod:tmod predmod
+nmod:npmod predmod
+remnant predmod

@@ -1,0 +1,106 @@
+import argparse
+import xml.etree.cElementTree as ET
+
+
+def copyAnnotations(system, gold):
+    system_tree = ET.parse(system)
+    system_root = system_tree.getroot()
+
+    gold_tree = ET.parse(gold)
+    gold_root = gold_tree.getroot()
+
+    for sd, gd in zip(system_tree.findall("document"), gold_tree.findall("document")):
+        for ss, gs in zip(sd.findall("sentence"), gd.findall("sentence")):
+            if ss.get("text") != gs.get("text"):
+                print "Mismatched sentences:", ss.get("id"), gs.get("id")
+                print ss.get("text")
+                print gs.get("text")
+                continue
+        
+            for annotation in ss.findall("entity"):
+                ss.remove(annotation)
+            for annotation in ss.findall("interaction"):
+                ss.remove(annotation)
+            for annotation in reversed(gs.findall("interaction")):
+                ss.insert(0, annotation)
+            for annotation in reversed(gs.findall("entity")):
+                ss.insert(0, annotation)
+
+    system_tree.write("test_output.xml")
+
+
+def unsplitTokenization(xml):
+    xml = ET.parse(xml)
+    for d in xml.findall("document"):
+        for s in d.findall("sentence"):
+            a = s.find("analyses")
+            tokenization = a.find("tokenization")
+            if tokenization == None:
+                print "Missing tokenization from sentence", s.get("id")
+                continue
+            tokens = tokenization.findall("token")
+
+            splitFrom = ""
+            newTokens = []
+            for t in tokens:
+                if "splitFrom" not in t.attrib:
+                    t.set("id", "bt_"+str(len(newTokens)))
+                    newTokens.append(t)
+                    continue
+
+                #deal with splitFrom tokens
+                if t.get("splitFrom") != splitFrom:
+                    splitFrom = t.get("splitFrom")
+                    t.set("charOffset", splitFrom)
+                    t.set("id", "bt_"+str(len(newTokens)))
+                    newTokens.append(t)
+                    del t.attrib["splitFrom"]
+                    continue
+                else:
+                    last = newTokens[-1]
+                    last.set("text", last.get("text")+t.get("text"))
+                    
+            for t in tokens:
+                tokenization.remove(t)
+            for t in newTokens:
+                tokenization.append(t)
+                
+    xml.write(args.output)
+
+
+def removeConstituencyParse(xml):
+    xml = ET.parse(xml)
+    for d in xml.findall("document"):
+        for s in d.findall("sentence"):
+            a = s.find("analyses")
+            parse = a.find("parse")
+            if parse == None:
+                print "Missing parse from sentence", s.get("id")
+                continue
+            
+            parse.set("pennstring", "(S1 (NN PARSE-FAILED))")
+            phrases = parse.findall("phrase")
+                        
+            for p in phrases:
+                parse.remove(p)
+            newPhrase = ET.SubElement(parse, "phrase")
+            newPhrase.set("begin", "0")
+            newPhrase.set("end", "0")
+            newPhrase.set("id", "bp_0")
+            newPhrase.set("type", "NP")
+            #<phrase begin="0" end="0" id="bp_0" type="NP" />
+
+    xml.write(args.output)
+
+parser = argparse.ArgumentParser(description='"Unsplit" tokenization.')
+parser.add_argument('input', 
+                   help='Input file')
+parser.add_argument('--output',  default='test_output.xml',
+                   help='Output file')
+
+args = parser.parse_args()
+
+
+system = args.input
+#gold = "/afs/cs.stanford.edu/u/natalias/.tees/corpora/GE09-devel.xml"
+unsplitTokenization(system)

@@ -1,0 +1,19 @@
+mkdir -p Experiments/conflated
+
+for trans in MyScripts/Transformations/Transformation-* 
+do 
+    TARGET=`cat $trans/target.txt`
+    echo $TARGET
+
+    mkdir Experiments/conflated/$TARGET
+    mkdir Experiments/conflated/duplicated-$TARGET
+
+    for part in devel test train 
+    do
+	python MyScripts/utils.py substituteDependencyTypes --output Experiments/conflated/$TARGET/GE09-$part.xml --target $TARGET $trans/*.map Experiments/split_labels/split_nmod_basicUD/GE09-$part.xml
+	python MyScripts/utils.py substituteDependencyTypes --output Experiments/conflated/duplicated-$TARGET/GE09-$part.xml --target $TARGET --keepOriginal $trans/*.map Experiments/split_labels/split_nmod_basicUD/GE09-$part.xml
+    done
+
+    MyScripts/trainGE09model.sh Experiments/conflated/$TARGET
+    MyScripts/trainGE09model.sh Experiments/conflated/duplicated-$TARGET
+done
