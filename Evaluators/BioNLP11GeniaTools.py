@@ -85,6 +85,30 @@ def getFolds(path, folds, seed=0):
         foldByDocNumber[docNumbers[i]] = folds[i]
     return foldByDocNumber
 
+def getIndividualFolds(path):
+    import Core.Split as Split
+    files = os.listdir(path)
+    docNumbers = set()
+    for file in files:
+        numPart = file.split(".",1)[0]
+        if numPart.isdigit():
+            docNumbers.add(int(numPart))
+    docNumbers = list(docNumbers)
+    foldByDocNumber = {}
+    for i in range(len(docNumbers)):
+        foldByDocNumber[docNumbers[i]] = i
+    return foldByDocNumber, len(docNumbers)
+
+def addDocuments(sourceDir, sourceSubsetDir, folds, foldToAdd):
+    files = os.listdir(sourceDir)
+    for file in files:
+        numPart = file.split(".",1)[0]
+        if numPart.isdigit():
+            numPart = int(numPart)
+            assert folds.has_key(numPart)
+            if folds[numPart] == foldToAdd:
+                shutil.copy(os.path.join(sourceDir, file), sourceSubsetDir)
+
 def removeDocuments(path, folds, foldToRemove):
     files = os.listdir(path)
     for file in files:
@@ -95,17 +119,37 @@ def removeDocuments(path, folds, foldToRemove):
             if folds[numPart] == foldToRemove:
                 os.remove(os.path.join(path, file))
 
-def evaluateVariance(sourceDir, task, folds):
-    results = []
-    for i in range(folds):
-        results.append(evaluate(sourceDir, task, folds=folds, foldToRemove=i))
+def evaluateVariance(sourceDir, task, folds, goldDir=None):
+    print >> sys.stderr, "Evaluating variance with", folds, "folds"
+
+    results = evaluate(sourceDir, task, folds=folds, evaluations=["strict"], goldDir=goldDir)
+    assert len(results) == folds
+
     print >> sys.stderr, "##### Variance estimation results #####"
-    fscores = [r[1]["strict"]["ALL-TOTAL"]["fscore"] for r in results]
-    for i, f in enumerate(fscores):
-        print >> sys.stderr, "F-score (strict/ALL-TOTAL) for fold", i, ":", f
+    metrics = [r["strict"]["ALL-TOTAL"] for r in results]
+    for i, m in enumerate(metrics):
+        print >> sys.stderr, "Metrics (strict/ALL-TOTAL) for fold", i, ":", ",".join(map(str,[m["answer"], m["answer_match"], m["gold"], m["fscore"]]))
     #print >> sys.stderr, "Mean:", mean(fscores)
     #print >> sys.stderr, "Variance:", variance(fscores)
 
+def evaluateDocs(sourceDir, task, folds, goldDir=None, out='-'):
+    results = evaluate(sourceDir, task, folds=0, evaluations=["strict"], goldDir=goldDir)
+
+    print >> sys.stderr, "##### Variance estimation results #####"
+    metrics = [r["strict"]["ALL-TOTAL"] for r in results]
+
+    if out == '-':
+        out = sys.stderr
+    else:
+        out = open(out,'wb')
+
+    out.write(",".join(["doc#","answer","answer_match","gold","fscore"])+'\n')
+    for i, m in enumerate(metrics):
+        out.write(",".join(map(str,[i, m["answer"], m["answer_match"], m["gold"], m["fscore"]]))+'\n')
+
+    print >> sys.stderr, "Mean precision: {:.2f}".format(100*sum([float(m["answer_match"]) for m in metrics])/sum([m["answer"] for m in metrics]))
+    print >> sys.stderr, "Mean recall: {:.2f}".format(100*sum([float(m["answer_match"]) for m in metrics])/sum([m["gold"] for m in metrics]))
+        
 def hasGoldDocuments(sourceDir, goldDir):
     goldDocIds = set()
     for filename in os.listdir(goldDir):
@@ -152,7 +196,7 @@ def getFScore(results, task):
             return -1
     return current
 
-def evaluate(source, task, goldDir=None, debug=False, folds=-1, foldToRemove=-1):
+def evaluate(source, task, goldDir=None, debug=False, folds=-1, evaluations=["strict", "approximate", "decomposition"]):
     print >> sys.stderr, "BioNLP task", task, "devel evaluation"
     # Determine task
     subTask = "1"
@@ -160,7 +204,8 @@ def evaluate(source, task, goldDir=None, debug=False, folds=-1, foldToRemove=-1)
         task, subTask = task.split(".")
     # Do the evaluation
     if task in ["GE11", "GE09"]:
-        results = evaluateGE(source, task, subTask, goldDir=goldDir, debug=debug, folds=folds, foldToRemove=foldToRemove)
+        results = evaluateGE(source, task, subTask, goldDir=goldDir, debug=debug, folds=folds, evaluations=evaluations)
+        if folds != -1: return results
     elif task in ["EPI11", "ID11"]:
         results = evaluateEPIorID(task, source, goldDir)
     elif task == "REN11":
@@ -246,7 +291,14 @@ def checkEvaluator(corpus, sourceDir, goldDir = None):
         tempdir = os.path.abspath(tempdir)
     return evaluatorDir, sourceDir, goldDir, tempdir
 
-def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, foldToRemove=-1, evaluations=["strict", "approximate", "decomposition"], verbose=True, silent=False, debug=False):
+
+def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, evaluations=["strict", "approximate", "decomposition"], 
+               verbose=True, silent=False, debug=False):
+    if goldDir==None:
+        prepared = False
+    else:
+        prepared = options.prepared
+
     task = str(task)
     assert mainTask in ["GE11", "GE09"], mainTask
     assert task in ["1","2","3"], task
@@ -276,41 +328,33 @@ def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, foldT
     if tempDir == None:
         tempDir = tempfile.mkdtemp()
 
-    if folds != -1:
-        silent = True
-        folds = getFolds(sourceDir, folds)
-        sourceSubsetDir = tempDir + "/source-subset"
-        if os.path.exists(sourceSubsetDir):
-            shutil.rmtree(sourceSubsetDir)
-        shutil.copytree(sourceDir, sourceSubsetDir)
-        removeDocuments(sourceSubsetDir, folds, foldToRemove)
-    else:
-        sourceSubsetDir = sourceDir
-    
-    results = {}
-    
+
     # Prepare gold data
     if mainTask == "GE09":
-        preparedGoldDir = os.path.join(tempDir, "prepared-gold")
-        commands = "perl prepare-gold.pl " + goldDir + " " + preparedGoldDir
-        p = subprocess.Popen(commands, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if verbose and not silent:
-            printLines(p.stderr.readlines())
-            printLines(p.stdout.readlines())
-        else: # Not reading the lines causes some error in the perl script!
-            p.stderr.readlines()
-            p.stdout.readlines()
-        goldDir = preparedGoldDir
+        if not prepared:            
+            preparedGoldDir = os.path.join(tempDir, "prepared-gold")
+            commands = "perl prepare-gold.pl " + goldDir + " " + preparedGoldDir
+            p = subprocess.Popen(commands, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if verbose and not silent:
+                printLines(p.stderr.readlines())
+                printLines(p.stdout.readlines())
+            else: # Not reading the lines causes some error in the perl script!
+                p.stderr.readlines()
+                p.stdout.readlines()
+            goldDir = preparedGoldDir
+        else:
+            print >> sys.stderr, "Gold data is pre-prepared."
     
+
     # Prepare evaluated data
-    outDir = tempDir + "/output"
+    preparedDir = tempDir + "/prepared"
     if mainTask == "GE11":
         commands = "perl a2-normalize.pl -g " + goldDir
-        commands += " -o " + outDir
-        commands += " " + sourceSubsetDir + "/*" + taskSuffix #".a2"
+        commands += " -o " + preparedDir
+        commands += " " + sourceDir + "/*" + taskSuffix #".a2"
     else:
         commands = "perl prepare-eval.pl -g " + goldDir
-        commands += " " + sourceSubsetDir + " " + outDir
+        commands += " " + sourceDir + " " + preparedDir
     p = subprocess.Popen(commands, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if verbose and not silent:
         printLines(p.stderr.readlines())
@@ -318,53 +362,91 @@ def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, foldT
     else: # Not reading the lines causes some error in the perl script!
         p.stderr.readlines()
         p.stdout.readlines()
-                
-    if "strict" in evaluations:
-        #commands = "export PATH=$PATH:./ ; "
-        commands = "perl a2-evaluate.pl" 
-        if mainTask == "GE11": commands += " -t " + str(task)
-        if debug: commands += " -v -d"
-        commands += " -g " + goldDir + " " + outDir + "/*" + taskSuffix #".a2"
-        p = subprocess.Popen(commands, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stderrLines = p.stderr.readlines()
-        stdoutLines = p.stdout.readlines()
-        if not silent:
-            printLines(stderrLines)
-            print >> sys.stderr, "##### strict evaluation mode #####"
-            printLines(stdoutLines)
-        results["strict"] = parseResults(stdoutLines)
-    
-    if "approximate" in evaluations:
-        if not silent:
-            print >> sys.stderr, "##### approximate span and recursive mode #####"
-        #commands = "export PATH=$PATH:./ ; "
-        commands = "perl a2-evaluate.pl"
-        if mainTask == "GE11": commands += " -t " + str(task)
-        if debug: commands += " -v -d"
-        commands += " -g " + goldDir + " -sp " + outDir + "/*" + taskSuffix #".a2"
-        p = subprocess.Popen(commands, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stderrLines = p.stderr.readlines()
-        stdoutLines = p.stdout.readlines()
-        if not silent:
-            printLines(stderrLines)
-            printLines(stdoutLines)
-        results["approximate"] = parseResults(stdoutLines)
 
-    if "decomposition" in evaluations:
-        if not silent:
-            print >> sys.stderr, "##### event decomposition in the approximate span mode #####"
-        #commands = "export PATH=$PATH:./ ; "
-        commands = "perl a2-evaluate.pl"
-        if mainTask == "GE11": commands += " -t " + str(task)
-        if debug: commands += " -v -d"
-        commands += " -g " + goldDir + " -sp " + outDir + "/*" + taskSuffix #".a2"
-        p = subprocess.Popen(commands, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stderrLines = p.stderr.readlines()
-        stdoutLines = p.stdout.readlines()
-        if not silent:
-            printLines(stderrLines)
-            printLines(stdoutLines)
-        results["decomposition"] = parseResults(stdoutLines)
+    numFolds = folds
+    folding = False
+    foldResults = []
+    individual = False
+
+    if folds > 0:
+        silent = True
+        folding = True
+        folds = getFolds(preparedDir, folds)
+        print >> sys.stderr, "Folding in", numFolds
+        
+    if folds == 0:
+        silent = True
+        folding = True
+        individual = True
+        folds, numFolds = getIndividualFolds(preparedDir)
+        print >> sys.stderr, "Folding in", numFolds
+
+    for i in range(0, max(1, numFolds)):
+        if folding:
+            sourceSubsetDir = tempDir + "/source-subset"
+            if os.path.exists(sourceSubsetDir):
+                shutil.rmtree(sourceSubsetDir)
+            if individual:
+                os.mkdir(sourceSubsetDir)
+                addDocuments(preparedDir, sourceSubsetDir, folds, i)
+            else:
+                shutil.copytree(preparedDir, sourceSubsetDir)
+                removeDocuments(sourceSubsetDir, folds, i)
+#            os.listdir(sourceSubsetDir)
+        else:
+            sourceSubsetDir = preparedDir
+    
+        results = {}
+
+        if "strict" in evaluations:
+            #commands = "export PATH=$PATH:./ ; "
+            commands = "perl a2-evaluate.pl" 
+            if mainTask == "GE11": commands += " -t " + str(task)
+            if debug: commands += " -v -d"
+            commands += " -g " + goldDir + " " + sourceSubsetDir + "/*" + taskSuffix #".a2"
+            p = subprocess.Popen(commands, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stderrLines = p.stderr.readlines()
+            stdoutLines = p.stdout.readlines()
+            if not silent:
+                printLines(stderrLines)
+                print >> sys.stderr, "##### strict evaluation mode #####"
+                printLines(stdoutLines)
+            results["strict"] = parseResults(stdoutLines)
+    
+        if "approximate" in evaluations:
+            if not silent:
+                print >> sys.stderr, "##### approximate span and recursive mode #####"
+            #commands = "export PATH=$PATH:./ ; "
+            commands = "perl a2-evaluate.pl"
+            if mainTask == "GE11": commands += " -t " + str(task)
+            if debug: commands += " -v -d"
+            commands += " -g " + goldDir + " -sp " + sourceSubsetDir + "/*" + taskSuffix #".a2"
+            p = subprocess.Popen(commands, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stderrLines = p.stderr.readlines()
+            stdoutLines = p.stdout.readlines()
+            if not silent:
+                printLines(stderrLines)
+                printLines(stdoutLines)
+            results["approximate"] = parseResults(stdoutLines)
+
+        if "decomposition" in evaluations:
+            if not silent:
+                print >> sys.stderr, "##### event decomposition in the approximate span mode #####"
+            #commands = "export PATH=$PATH:./ ; "
+            commands = "perl a2-evaluate.pl"
+            if mainTask == "GE11": commands += " -t " + str(task)
+            if debug: commands += " -v -d"
+            commands += " -g " + goldDir + " -sp " + sourceSubsetDir + "/*" + taskSuffix #".a2"
+            p = subprocess.Popen(commands, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stderrLines = p.stderr.readlines()
+            stdoutLines = p.stdout.readlines()
+            if not silent:
+                printLines(stderrLines)
+                printLines(stdoutLines)
+            results["decomposition"] = parseResults(stdoutLines)
+        
+        foldResults.append(results)
+
     
     if not debug:
         shutil.rmtree(tempDir)
@@ -373,7 +455,11 @@ def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, foldT
     
     # return to current dir
     os.chdir(origDir)
-    return results
+
+    assert len(foldResults) > 0
+
+    if numFolds == -1: return foldResults[0]
+    return foldResults
 
 def printLinesBX(lines):
 #    queue = []
@@ -620,15 +706,25 @@ if __name__=="__main__":
     optparser.add_option("-t", "--task", default="GE.2", dest="task", help="")
     optparser.add_option("-v", "--variance", default=0, type="int", dest="variance", help="variance folds")
     optparser.add_option("-d", "--debug", default=False, action="store_true", dest="debug", help="debug")
+    optparser.add_option("-p", "--prepared", default=False, action="store_true", dest="prepared", help="Whether the gold dir given is already prepared")
+    optparser.add_option("-c", "--docs", default=False, action="store_true", dest="docs", help="Run document-level evaluation")
+    optparser.add_option("-o", "--docsOutput", default='-', dest="docsOutput", help="Document for writing document-level evaluation results")
     optparser.add_option("--install", default=None, dest="install", help="Install directory (or DEFAULT)")
     (options, args) = optparser.parse_args()
     #assert(options.task in [1,2,3])
     
     if options.install == None:
         assert(options.input != None)
-        evalResult = evaluate(options.input, options.task, options.gold, debug=options.debug)
-        if options.debug:
-            print >> sys.stderr, "evaluate output:", evalResult
+        if options.variance > 0 and "GE" in options.task:
+            evaluateVariance(options.input, options.task, options.variance, goldDir=options.gold)
+
+        if options.docs and "GE" in options.task:
+            evaluateDocs(options.input, options.task, options.variance, goldDir=options.gold, out=options.docsOutput)
+
+        else:
+            evalResult = evaluate(options.input, options.task, options.gold, debug=options.debug)
+            if options.debug:
+                print >> sys.stderr, "evaluate output:", evalResult
     else:
         downloadDir = None
         destDir = None
@@ -645,8 +741,7 @@ if __name__=="__main__":
 #        if options.variance == 0:
 #            evaluate(options.input, options.task, debug = options.debug)
 #        else:
-    if options.variance > 0 and "GE" in options.task:
-        evaluateVariance(options.input, options.task, options.variance)
+
 #    elif options.corpus in ["EPI", "ID"]:
 #        print evaluateEPIorID(options.input, options.corpus)
 #    elif options.corpus == "REN":
