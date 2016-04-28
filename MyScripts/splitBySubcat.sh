@@ -8,5 +8,5 @@ do
 #    java -cp ~/scr/working-dirs/DependencyTransformer/DependencyTransformer/classes converters.SplitComplements "$file"
 #    java -cp ~/scr/working-dirs/DependencyTransformer/DependencyTransformer/classes converters.SplitXcomp "$file"
 #    java -cp ~/scr/working-dirs/DependencyTransformer/DependencyTransformer/classes converters.SplitSubjectsWithXcomp "$file"
-    mv "$file".split-* "$file"
+    mv "$file".* "$file"
 done

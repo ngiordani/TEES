@@ -5,7 +5,8 @@ __version__ = "$Revision: 1.3 $"
 
 import Split
 import sys, os
-sys.path.append("..")
+sys.path.append(os.path.dirname(os.path.abspath(__file__))+"/..")
+#sys.path.append("..")
 try:
     import xml.etree.cElementTree as ET
 except ImportError:

@@ -382,6 +382,8 @@ def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, evalu
         print >> sys.stderr, "Folding in", numFolds
 
     for i in range(0, max(1, numFolds)):
+        results = {}
+
         if folding:
             sourceSubsetDir = tempDir + "/source-subset"
             if os.path.exists(sourceSubsetDir):
@@ -396,8 +398,6 @@ def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, evalu
         else:
             sourceSubsetDir = preparedDir
     
-        results = {}
-
         if "strict" in evaluations:
             #commands = "export PATH=$PATH:./ ; "
             commands = "perl a2-evaluate.pl" 

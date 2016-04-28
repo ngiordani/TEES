@@ -222,7 +222,9 @@ def addDependencies(outfile, parse, tokenByIndex=None, sentenceId=None, skipExtr
 #    shutil.rmtree(workdir)
 #    return lines
 
-def convertXML(parser, input, output=None, debug=False, reparse=False, stanfordParserDir=None, stanfordParserArgs=None):
+def convertXML(parser, input, output=None, debug=False, reparse=False, stanfordParserDir=None, stanfordParserArgs=None, mode=None):
+    if mode == None:
+        mode = "basic"
     #global stanfordParserDir, stanfordParserArgs
     if stanfordParserDir == None:
         stanfordParserDir = Settings.STANFORD_PARSER_DIR
@@ -237,7 +239,7 @@ def convertXML(parser, input, output=None, debug=False, reparse=False, stanfordP
                               #"-basic",
                               #"-CCprocessed", 
                               #"-enhanced",
-                              "-enhanced++",
+                              "-"+mode,
                               "-keepPunct", "-treeFile"]
     print >> sys.stderr, "Running Stanford conversion"
     print >> sys.stderr, "Stanford tools at:", stanfordParserDir
@@ -493,6 +495,7 @@ if __name__=="__main__":
     optparser.add_option("-i", "--input", default=None, dest="input", help="Corpus in interaction xml format", metavar="FILE")
     optparser.add_option("-o", "--output", default=None, dest="output", help="Output file in interaction xml format.")
     optparser.add_option("-p", "--parse", default=None, dest="parse", help="Name of parse element.")
+    optparser.add_option("-m", "--mode", default=None, dest="mode", help="Conversion mode (Stanford Converter flag).", choices=["basic", "enhanced", "enhanced++", "CCprocessed"])
     optparser.add_option("--debug", default=False, action="store_true", dest="debug", help="")
     optparser.add_option("--reparse", default=False, action="store_true", dest="reparse", help="")
     group = OptionGroup(optparser, "Install Options", "")
@@ -506,5 +509,5 @@ if __name__=="__main__":
     if options.install:
         install(options.installDir, options.downloadDir, redownload=options.redownload)
     else:
-        convertXML(input=options.input, output=options.output, parser=options.parse, debug=options.debug, reparse=options.reparse)
+        convertXML(input=options.input, output=options.output, parser=options.parse, debug=options.debug, reparse=options.reparse, mode=options.mode)
         

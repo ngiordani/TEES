@@ -75,10 +75,11 @@ def sumOverCriterion(sample, docEvals, criterion):
 
 
 if __name__ == "__main__":
+
+
     baseline = getDocEvals(sys.argv[1])
     system = getDocEvals(sys.argv[2])
 
-    # This may be too strong? These are lists...
     assert baseline.keys() == system.keys()
 
     baseline_better = set()
