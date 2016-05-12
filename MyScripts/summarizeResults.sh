@@ -1,0 +1,1 @@
+for dir in */*/*/fold-0 ; do dir="${dir%/*}"; echo $dir ; for i in {0..9} ; do if [ -e $dir/fold-$i/log.txt ] ; then result=`tail -n 550 $dir/fold-$i/log.txt | grep -A 23 strict | grep ALL` ; echo ${result: -23} ; fi ; done ;  done
