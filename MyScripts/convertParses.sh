@@ -4,7 +4,7 @@ OUTPUT=$2
 python Utils/InteractionXML/ExportParse.py -i $INPUT -o tempOutput/ --parse McCC
 
 MyScripts/splitBySubcat.sh tempOutput $3
-#./transformDocuments.sh $3 tempOutput/
+#MyScripts/transformDocuments.sh $3 tempOutput/
 #for file in tempOutput/* ; do python makeTrivialParse.py $file ; done
 
 python MyScripts/utils.py unsplitTokenization --output merged.xml $INPUT

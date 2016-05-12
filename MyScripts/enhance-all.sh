@@ -2,7 +2,7 @@ TASK=$1
 DIR=$1-Experiments
 BASELINE=$2
 
-for ENHANCEMENT in IntroduceXADVCL #SplitSubjects SplitComplements SplitXcomp SplitSubjectsWithXcomp AnnotateNegation IntroduceXADVCL
+for ENHANCEMENT in SplitSubjectsWithXcomp #AnnotateNegation IntroduceXADVCL IntroduceXADVCL SplitSubjects SplitComplements SplitXcomp 
 do
     mkdir -p $DIR/enhancements/$ENHANCEMENT
 

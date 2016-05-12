@@ -5,8 +5,11 @@ import argparse
 import sys
 import random
 import math
+import numpy as np
 
 def getPValue(baseline, system, iterations, sampleSize):
+    
+
     baselineMean = getScore([], baseline)
     systemMean = getScore([], system)
 
@@ -23,51 +26,63 @@ def getPValue(baseline, system, iterations, sampleSize):
     difference = systemMean - baselineMean
     print "difference:", difference
     
-    count = 0
+    if not iterations > 0:
+        return "Not estimated"
     
+    count = 0
+    docs = list(baseline.keys())
+    docsLength = len(baseline)
+
     for i in xrange(0, iterations):
-        sample = getSample(sampleSize, len(baseline))
+        sys.stdout.write('\r'+str(i))
+        sys.stdout.flush()
+        sample = getSample(sampleSize, docsLength, docs)
         baselineScore = getScore(sample, baseline)
         systemScore = getScore(sample, system)
-#        print "baseline:{}, system:{}".format(baselineScore, systemScore)
+
         if systemScore - baselineScore > 2*difference:
             count += 1
-#            print "adding"
+
+    print ""
 
     print "Found difference larger than 2 * mean difference in", count, "out of", iterations, "bootstrapped samples."
     return count / iterations
 
 
-def getDocEvals(filename):
+def getDocEvals(filenames):
     docEvals = {}
-    with open(filename) as f:
-        f.readline()
-        for line in f:
-            doc, answer, answer_match, gold, fscore = map(float, line.strip().split(','))
-            scores = {"answer":answer, "answer_match":answer_match, "gold":gold}
-            docEvals[int(doc)] = scores
-
+    for filename in filenames:
+        with open(filename) as f:
+            f.readline()
+            for line in f:
+                doc, answer, answer_match, gold, fscore = line.strip().split(',')
+                scores = {"answer":float(answer), "answer_match":float(answer_match), "gold":float(gold)}
+                assert doc not in docEvals
+                docEvals[doc] = scores
+                
     return docEvals
 
 
-def getSample(sampleSize, numDocs):
+def getSample(sampleSize, numDocs, docs):
     sample = []
     for i in xrange(0, sampleSize):
-        sample.append(random.randint(0, numDocs-1))
+        sample.append(docs[random.randint(0, numDocs-1)])
 
     return sample
 
 
-def getScore(sample, docEvals):
+def getScore(sample, docEvals, metric="fscore"):
     total_answer = sumOverCriterion(sample, docEvals, "answer")
     total_answer_match = sumOverCriterion(sample, docEvals, "answer_match")
     total_gold = sumOverCriterion(sample, docEvals, "gold")
 
-    precision = total_answer_match / total_answer
-    recall = total_answer_match / total_gold
-    fscore = 2 * (precision * recall) / (precision + recall)
+    metrics = {}
 
-    return fscore
+    metrics["precision"] = total_answer_match / total_answer
+    metrics["recall"] = total_answer_match / total_gold
+    metrics["fscore"] = 2 * (metrics["precision"] * metrics["recall"]) / (metrics["precision"] + metrics["recall"])
+
+    return metrics[metric]
 
 
 def sumOverCriterion(sample, docEvals, criterion):
@@ -76,37 +91,56 @@ def sumOverCriterion(sample, docEvals, criterion):
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description='Perform a paired bootstrap test.')
+    parser.add_argument("--aggregate", nargs='+')
+    parser.add_argument("--compareTo", nargs='+')
+    parser.add_argument("--baseline", nargs="+")
+    parser.add_argument("--system", nargs="+")
+    parser.add_argument("-i", "--iterations", default=10000, type=int)
+    args = parser.parse_args()
 
-    baseline = getDocEvals(sys.argv[1])
-    system = getDocEvals(sys.argv[2])
+    if args.aggregate:
+        evals = getDocEvals(args.aggregate[:-1])
+        agg = getScore([], evals, args.aggregate[-1])
+        if args.compareTo:
+            baseline = getDocEvals(args.compareTo)
+            assert set(baseline.keys()) == set(evals.keys()), "\nBaseline: {} \nBaseline size:{}\n\nSystem:{}\nSystem size:{}".format(baseline.keys(), len(baseline.keys()), evals.keys(), len(evals.keys()))
+            baseline = getScore([], baseline, args.aggregate[-1])
+            agg -= baseline
+        print "{:6.3f}".format(agg)
+        sys.exit()
 
-    assert baseline.keys() == system.keys()
 
-    baseline_better = set()
-    system_better = set()
+    baseline = getDocEvals(args.baseline)
+    system = getDocEvals(args.system)
+
+    assert set(baseline.keys()) == set(system.keys())
+
+    sampleSize = len(system)
+    
+    p = getPValue(baseline, system, args.iterations, sampleSize)
+    print "Estimated p-value:", p
+
+'''
+    baseline_better = {}
+    system_better = {}
     for doc in baseline:
-        baseline_matches = baseline[doc]["answer_match"]
-        system_matches = system[doc]["answer_match"]
+        baseline_matches = baseline[doc]["answer_match"] / max(1.0, baseline[doc]["answer"])
+        system_matches = system[doc]["answer_match"] / max(1.0, system[doc]["answer"])
         if baseline_matches != system_matches:
         #print "Document {} has {} answer_match in first classifier and {} in second".format(doc, baseline_matches, system_matches)
             if baseline_matches > system_matches:
-                baseline_better.add(doc)
+                baseline_better[doc] = baseline_matches - system_matches
             else:
-                system_better.add(doc)
+                system_better[doc] = system_matches - baseline_matches
 
     print "First argument (baseline) is better on", len(baseline_better), "documents:"
-    baseline_better = sorted(baseline_better)
+#    baseline_better = sorted(baseline_better)
     for doc in baseline_better:
-        print doc
+        print doc, "diff:", baseline_better[doc]
         
     print "First argument (system) is better on", len(system_better), "documents:"
-    system_better = sorted(system_better)
+#    system_better = sorted(system_better)
     for doc in system_better:
-        print doc
-
-    iterations = int(sys.argv[3])
-    sampleSize = len(system)
-    
-    p = getPValue(baseline, system, iterations, sampleSize)
-    print "Estimated p-value:", p
-
+       print doc, "diff:", system_better[doc]
+'''

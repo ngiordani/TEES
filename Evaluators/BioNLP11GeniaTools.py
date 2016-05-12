@@ -76,8 +76,9 @@ def getFolds(path, folds, seed=0):
     docNumbers = set()
     for file in files:
         numPart = file.split(".",1)[0]
-        if numPart.isdigit():
-            docNumbers.add(int(numPart))
+        docNumbers.add(numPart)
+#        if numPart.isdigit():
+#            docNumbers.add(int(numPart))
     docNumbers = list(docNumbers)
     folds = Split.getFolds(len(docNumbers), folds, seed)
     foldByDocNumber = {}
@@ -91,23 +92,24 @@ def getIndividualFolds(path):
     docNumbers = set()
     for file in files:
         numPart = file.split(".",1)[0]
-        if numPart.isdigit():
-            docNumbers.add(int(numPart))
+        docNumbers.add(numPart)
+#        if numPart.isdigit():
+#            docNumbers.add(int(numPart))
     docNumbers = list(docNumbers)
     foldByDocNumber = {}
     for i in range(len(docNumbers)):
         foldByDocNumber[docNumbers[i]] = i
-    return foldByDocNumber, len(docNumbers)
+    return foldByDocNumber, len(docNumbers), docNumbers
 
 def addDocuments(sourceDir, sourceSubsetDir, folds, foldToAdd):
     files = os.listdir(sourceDir)
     for file in files:
         numPart = file.split(".",1)[0]
-        if numPart.isdigit():
-            numPart = int(numPart)
-            assert folds.has_key(numPart)
-            if folds[numPart] == foldToAdd:
-                shutil.copy(os.path.join(sourceDir, file), sourceSubsetDir)
+#        if numPart.isdigit():
+#            numPart = int(numPart)
+        assert folds.has_key(numPart)
+        if folds[numPart] == foldToAdd:
+            shutil.copy(os.path.join(sourceDir, file), sourceSubsetDir)
 
 def removeDocuments(path, folds, foldToRemove):
     files = os.listdir(path)
@@ -143,9 +145,9 @@ def evaluateDocs(sourceDir, task, folds, goldDir=None, out='-'):
     else:
         out = open(out,'wb')
 
-    out.write(",".join(["doc#","answer","answer_match","gold","fscore"])+'\n')
+        out.write(",".join(["doc#","answer","answer_match","gold","fscore"])+'\n')
     for i, m in enumerate(metrics):
-        out.write(",".join(map(str,[i, m["answer"], m["answer_match"], m["gold"], m["fscore"]]))+'\n')
+        out.write(",".join(map(str,[results[i]["docNumber"], m["answer"], m["answer_match"], m["gold"], m["fscore"]]))+'\n')
 
     print >> sys.stderr, "Mean precision: {:.2f}".format(100*sum([float(m["answer_match"]) for m in metrics])/sum([m["answer"] for m in metrics]))
     print >> sys.stderr, "Mean recall: {:.2f}".format(100*sum([float(m["answer_match"]) for m in metrics])/sum([m["gold"] for m in metrics]))
@@ -378,7 +380,7 @@ def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, evalu
         silent = True
         folding = True
         individual = True
-        folds, numFolds = getIndividualFolds(preparedDir)
+        folds, numFolds, docNumbers = getIndividualFolds(preparedDir)
         print >> sys.stderr, "Folding in", numFolds
 
     for i in range(0, max(1, numFolds)):
@@ -391,6 +393,9 @@ def evaluateGE(sourceDir, mainTask="GE11", task=1, goldDir=None, folds=-1, evalu
             if individual:
                 os.mkdir(sourceSubsetDir)
                 addDocuments(preparedDir, sourceSubsetDir, folds, i)
+                
+                assert folds[docNumbers[i]] == i
+                results["docNumber"] = docNumbers[i]
             else:
                 shutil.copytree(preparedDir, sourceSubsetDir)
                 removeDocuments(sourceSubsetDir, folds, i)
