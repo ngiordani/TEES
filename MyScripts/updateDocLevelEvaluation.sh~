@@ -1,0 +1,3 @@
+PREFIX=$1
+
+for dir in $PREFIX*/*/*/fold-* ; do if [ -e $dir/docLevelEvaluation.csv ] && [ -e $dir/classification-test/test-events.tar.gz ] ; then if tail -n 1 $dir/log.txt | grep -q "trigger(Transcription)" ; then echo $dir ; tail -n 3 $dir/log.txt ; python Evaluators/BioNLP11GeniaTools.py -i $dir/classification-devel/devel-events.tar.gz --docs -t $PREFIX --docsOutput $dir/docLevelEvaluation.csv ; fi ; fi ; done

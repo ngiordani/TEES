@@ -1,0 +1,4 @@
+dobj:iobj dobj
+dobj:xcomp dobj
+ccomp:iobj ccomp
+ccomp:xcomp ccomp

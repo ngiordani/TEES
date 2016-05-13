@@ -1,0 +1,86 @@
+import argparse
+import sys, os
+
+def compareDocument(docNumber, gold, baseline, system):
+    bdescriptions = getDescriptions([baseline+'/'+docNumber+'.a1', baseline+'/'+docNumber+'.a2'])
+    sdescriptions = getDescriptions([system+'/'+docNumber+'.a1', system+'/'+docNumber+'.a2'])
+    gdescriptions = getDescriptions([gold+'/'+docNumber+'.a1', gold+'/'+docNumber+'.a2'])
+
+    print "Baseline"
+    for b in bdescriptions:
+        if b not in sdescriptions:
+            if b in gdescriptions:
+                print "Correct:", b
+            else:
+                print "Incorrect: ", b
+
+    print "System"
+    for s in sdescriptions:
+        if s not in bdescriptions:
+            if s in gdescriptions:
+                print "Correct:", s
+            else:
+                print "Incorrect: ", s
+
+    print "Gold"
+    for g in gdescriptions:
+        print g
+
+def getDescriptions(filenames):
+    descriptions = []
+    T = {}
+    lines = []
+
+    for name in filenames:
+        with open(name) as f:
+            lines += f.readlines()
+
+    for line in lines:
+        if line.startswith("T"):
+            line = line.strip().split('\t')
+            assert len(line) == 3
+            T[line[0]] = line[2]
+    
+    
+
+    for line in lines:
+        text = line
+        if line.startswith("M"):
+            pass
+        elif line.startswith("E"):
+            line = line.strip().split('\t')
+#            description = line[0]+": "
+            description = ""
+            assert len(line) == 2
+            event = line[1].split()
+            for part in event:
+                typ, node = part.split(":")
+                if node not in T:
+                    lines.append(text)
+                    continue
+
+                node = T[node]
+                description += typ+":"+node+", "
+            description = description[:-2]
+            T[line[0]] = '('+description+')'
+            descriptions.append(description)
+
+    return descriptions
+
+
+parser = argparse.ArgumentParser(description='Print events.')
+parser.add_argument('documents', nargs='+',
+                   help='Document numbers')
+parser.add_argument('--gold', help="Gold directory")
+parser.add_argument('--baseline',
+                   help='Directory of baseline events')
+parser.add_argument('--system',
+                   help='Directory for comparison')
+
+args = parser.parse_args()
+
+
+for doc in args.documents:
+    os.system('cat '+args.gold+'/'+doc+'.txt')
+    compareDocument(doc, args.gold, args.baseline, args.system)
+
